@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 업무 체크리스트</title>
+<style>
+  body {
+    font-family: "Malgun Gothic", "맑은 고딕", sans-serif;
+    font-size: 20px;
+    background: #f3f5f8;
+    color: #222;
+    margin: 0;
+    padding: 24px 16px;
+  }
+  main {
+    max-width: 640px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+  h1 { font-size: 28px; margin: 0 0 20px; }
+  form { display: flex; gap: 8px; margin-bottom: 20px; }
+  input[type="text"] {
+    flex: 1;
+    font-size: 20px;
+    padding: 12px;
+    border: 2px solid #b8c0cc;
+    border-radius: 8px;
+    min-width: 0;
+  }
+  input[type="text"]:focus { outline: none; border-color: #2563eb; }
+  button {
+    font-family: inherit;
+    font-size: 20px;
+    min-height: 48px;
+    padding: 0 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #fff;
+  }
+  #addBtn { background: #2563eb; }
+  #addBtn:hover { background: #1d4ed8; }
+  .delBtn { background: #dc2626; min-width: 72px; }
+  .delBtn:hover { background: #b91c1c; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid #e3e7ed;
+  }
+  li input[type="checkbox"] { width: 28px; height: 28px; flex-shrink: 0; cursor: pointer; }
+  li .title { flex: 1; word-break: break-word; }
+  li.done .title { text-decoration: line-through; color: #9aa3b0; }
+  #empty { text-align: center; color: #667085; padding: 28px 0; }
+  #count { margin-top: 16px; font-weight: bold; }
+  #tools { display: flex; gap: 8px; margin-top: 16px; }
+  #tools button { background: #475467; }
+  #tools button:hover { background: #344054; }
+  #fileInput { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>내 업무 체크리스트</h1>
+
+  <form id="addForm">
+    <input type="text" id="titleInput" placeholder="할 일을 입력하세요" autocomplete="off" aria-label="업무 입력">
+    <button type="submit" id="addBtn">추가</button>
+  </form>
+
+  <ul id="list"></ul>
+  <div id="empty">아직 업무가 없습니다</div>
+  <div id="count"></div>
+
+  <div id="tools">
+    <button type="button" id="exportBtn">내보내기</button>
+    <button type="button" id="importBtn">불러오기</button>
+    <input type="file" id="fileInput" accept=".json,application/json" aria-label="불러올 JSON 파일 선택">
+  </div>
+</main>
+
+<script>
+  var STORAGE_KEY = "checklist-items";
+  var items = load();
+
+  var form = document.getElementById("addForm");
+  var input = document.getElementById("titleInput");
+  var listEl = document.getElementById("list");
+  var emptyEl = document.getElementById("empty");
+  var countEl = document.getElementById("count");
+
+  function load() {
+    try {
+      var data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (Array.isArray(data)) {
+        return data.filter(function (it) {
+          return it && typeof it.id === "number" && typeof it.title === "string";
+        }).map(function (it) {
+          return { id: it.id, title: it.title, done: it.done === true };
+        });
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    } catch (e) {}
+  }
+
+  function render() {
+    listEl.innerHTML = "";
+    items.forEach(function (item) {
+      var li = document.createElement("li");
+      if (item.done) li.className = "done";
+
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = item.done;
+      cb.setAttribute("aria-label", "완료 표시");
+      cb.addEventListener("change", function () {
+        item.done = cb.checked;
+        save();
+        render();
+      });
+
+      var span = document.createElement("span");
+      span.className = "title";
+      span.textContent = item.title;
+
+      var del = document.createElement("button");
+      del.type = "button";
+      del.className = "delBtn";
+      del.textContent = "삭제";
+      del.addEventListener("click", function () {
+        if (confirm("삭제할까요?")) {
+          items = items.filter(function (it) { return it.id !== item.id; });
+          save();
+          render();
+        }
+      });
+
+      li.appendChild(cb);
+      li.appendChild(span);
+      li.appendChild(del);
+      listEl.appendChild(li);
+    });
+
+    var remain = items.filter(function (it) { return !it.done; }).length;
+    emptyEl.style.display = items.length === 0 ? "block" : "none";
+    var doneCount = items.length - remain;
+    countEl.textContent = "남은 일 " + remain + "개 / 완료 " + doneCount + "개 / 전체 " + items.length + "개";
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var title = input.value.trim();
+    if (title === "") return;
+    items.push({ id: Date.now() + Math.random(), title: title, done: false });
+    input.value = "";
+    save();
+    render();
+    input.focus();
+  });
+
+  document.getElementById("exportBtn").addEventListener("click", function () {
+    var data = items.map(function (it) { return { title: it.title, done: it.done }; });
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "checklist-data.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  var fileInput = document.getElementById("fileInput");
+  document.getElementById("importBtn").addEventListener("click", function () {
+    fileInput.click();
+  });
+
+  // 올바른 형식이면 새 목록 배열을, 아니면 null을 돌려준다.
+  function parseImport(text) {
+    var data;
+    try { data = JSON.parse(text); } catch (e) { return null; }
+    if (!Array.isArray(data)) return null;
+    var result = [];
+    for (var i = 0; i < data.length; i++) {
+      var it = data[i];
+      if (!it || typeof it.title !== "string" || typeof it.done !== "boolean") return null;
+      var title = it.title.trim();
+      if (title === "") return null;
+      result.push({ id: Date.now() + Math.random(), title: title, done: it.done });
+    }
+    return result;
+  }
+
+  fileInput.addEventListener("change", function () {
+    var file = fileInput.files[0];
+    fileInput.value = "";
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var next = parseImport(String(reader.result));
+      if (next === null) {
+        alert("올바른 파일이 아닙니다. 현재 목록은 그대로 유지됩니다.");
+        return;
+      }
+      if (confirm("현재 목록을 지우고 파일의 " + next.length + "개 업무로 바꿀까요?")) {
+        items = next;
+        save();
+        render();
+      }
+    };
+    reader.onerror = function () {
+      alert("파일을 읽지 못했습니다. 현재 목록은 그대로 유지됩니다.");
+    };
+    reader.readAsText(file);
+  });
+
+  render();
+</script>
+</body>
+</html>
